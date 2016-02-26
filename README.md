@@ -1,146 +1,87 @@
-=== Order error redirect to link
-  This happens on upgrades_controller only.  If their is an error we present them with the option to update their account in recurly.
-  <%= flash[:error].html_safe if flash[:error] %>
+### CommissionCalculator
+  #<Order id: 240, recurly_uid: "31807911d80cbc9804c5343766e673b8", product_id: 7, email: "mail@zaidrahman.org", affiliate_code: nil, created_at: "2015-03-17 03:40:31", updated_at: "2015-03-17 03:40:31">
+  This was pushed up at 1:46 at March 18, 2015.   Everthing before this will need to be adjusted.
 
-=== Order Upgrading and commissions
-  All orders are sent to Steamads.  However the amount for a 2 year upgrade from a 1 year needs to be reduced so that they only get
-  the difference between the two.  Otherwise a user could get paid for a 1 year and then again for a 2 year.
-
-  This is handled via the CommissionCalculator class.  You pass it in current order and it determines if they have a 1 year purchase previously.
+### Steps to create a new offer and product.
+  Create a new Product - url will be how it is accessed from the sales form.  See below for all fields in database
+  Create a new Offer
 
 
-=== Requirements
-Route
-  /:brand_index/:product_url
+### Views
 
-A user will visit a form on the site.  Once they successfully sign up they will be redirected to a page that is next in the offer.
-
-Really a user could put whatever in the brand unless we want to limit that, the product URL is next.
-
-=== Layouts
-  Order forms are rendered using the layouts/order_form partial and passing in the relevant info
-
-=== Initial Design
-
-  Models
-
-    order < AR
-    recurly_ui# unique id inside of recurly
-    , product_id, email, referral_code
-
-    brand < AR
-    name logo
-
-    product < AR
-      name
-      brand_id
-      recurly_plan_code
-      upsell_id  #id of the product that is next in the offer
+  All items have 3 possible forms
+    Order Form - Associated with a specific product.  Accessible from products/:product_url
+    Sales Page - Associated with an offer, located in app/views/offers/new_sale/offer_name.  Is what they see when they access it and have not baught anything in the pipeline.
+    Upselling Page - Associated with an offer, located in app/views/offers/up_sell/offer_name.  What they see if they are in the pipeline and adding on a product or promotion.
 
 
-    offer_trail # MAYBE replace cross_sell_id
-    (current_step) product_id, next_step(product_id)
-      - each product can only have one offer_trail as a current_step
-      - index this on current_step
-
-  Services
-    path_finder < PORO
-    finds the next path for a given offer, probably defaults to thank you or something
-
-=== Considerations
-
-  Affiliate
-    206-508-1318
-
-  Recurly
-  normal user stuff
-  plan stuff associated with a product
-
-  account_code, username, email, first_name, last_name, company_name, vat_number, tax_exempt,
-    address: address1, address2, city, state, zip, country, phone
 
 
-=== Basic Order Workflow
+### Traffic Flow
 
-  Person visits /product/url, which is looked up by the products controller
-    - Products controller finds by product.url => url
-    - compiled_form is rendered, they enter info
+There are products and offers.
 
-  On submit and recurly data entered successfully, we pause the form and go to
-    - Post to /orders
-    - Order controller create action
+Offers display 1..* many products.
 
-  Order create makes an new OrderBroker with the params (recurly_token, recurly_plan and email)
-    - OrderBroker receives message conduct_order_process
-    - That response is rendered in js from create.js.erb
-    - The order broker walks through
-      - billing recurly
-      - creating an order
+For each offer there is either a new sale page or an upgrade page.
 
-  The JS is sent back to the client
+All pages have a direct sale page except the 2 year plan, however only a few have upgrades (for instance you can't upgrade the 4 strategies page).
 
-=== Second Design
-  OffersProducts holds the items that will be referenced so that an offer can have multiple products.
-  Product will then know the next offer to go to after something it is baught through offer_id
+Access the offers by visiting
+  stockstotrade/:offer_url
+    powerhouse
+    signals
+    signals_2year
+    underground
 
-  Offer will maintain the brand_id
+Access products to enter credit cards by visiting
+  products/:product_url
+    powerhouse
+    fxannual
+    fx2year
+    fxmonth
+    underground
 
-  Relations
-    OfferProducts belongs_to products and offers
-
-
-=== Questions/improvements
-
-Question - Do you want to be able to send someone to a link and that AUTOMATICALLY create a recurly recuring subscription by the name of the link, if so how much would cost be?
-  - How do we handle people signing up that already have baught from you...  ie someone buys one thing and then comes back later and buys somehing new.
-  - Upsell vs addon
-
-=== API Documentation
-
-  Basic Auth -
-    name: "mvsemawldpmfxg"
-    password: "DSrWu2crtJll2EZuOmZEP-zOvj"
+Keep in mind that these values for the url can change overtime and can be accessed from the database
 
 
-  List the orders for a particular email address
+There is a helper controller that returns the users proper spot in the pipeline.  The default is /offers/powerhouse.
+  /progress?email=email@example.com&recurly_uid=randomjibberish
 
-  REQUEST: GET /api/orders/:email
-  RETURNS:
+  Right now we only have the email portion implemented of the progress data.
 
-    If email not found, 404
+Models
 
-    If found
-      [
-        {
-          "product_id":1,
-          "email":"Raj@j.com",
-          "product":
-            {
-              "name":"Powerhouse Product",
-              "line_description":"Lifetime Membership",
-              "price_description":"one time",
-              "recurly_plan_code":"4pwr",
-              "investimonials_id":5
-            }
-        }
-      ]
+Product
+  recurly_plan_code: how the product is referenced in recurly as plan code
+  offer_id: the next offer that this should go to after it is purchased
+  addon_or_upgrade: string that is either 'addon' or 'upgrade'.  Determines if this offer will add on to another or if it will replace it
+  name: is displayed in the product summary of sales page in bold
+  line_description: right below the name in product summary
+  price_description: right below the price in the product summary
+  url: the direct way to access this.  /products/:url
+
+Offer
+  url: the /:brandname/:url that is looked for.  For instance /stockstotrade/
+
+Controllers
+  Upgrades
+    handles upgrades through a post.  Post must have the recurly_uid that they want to upgrade
 
 
-  List all emails of users in system
+Upgrade links are a little tricky because the text is all static in the database for the offer but is also dynamic for the users recurly uid.
+  This is handed in the offers controller through rendering an html document with the same *.html.erb as the url of the offer.  So underground will render teh
+  underground.html.erb.
 
-  REQUEST: GET /api/users
-  RETURNS: ['a@b.com', 'a@c.com']
+  The upgrade is triggered if an email is passed in through the URL
 
-  List all emails of users that have baught a specific product
 
-  REQUEST: GET /api/users?recurly_plan_code=something
-  RETURNS: ['a@b.com']
+ ### CLoseout dialogue
+   signals_promo and signals have a close out dialogue that allows them to display a longer sales page to users.  That logic is stored in assets/javascript/closeout_splashpage.js.  To use it
 
-  Here are all the current recurly plan codes
-    "4pwr", "fxcoreoffer", "fxmo", "uta", "fxcoreofferpromo", "fxmopromo", "fxupgrade2yr"
-
-  Recurly Webhook:
-
-  - Webhook url: domain/recurly/recurly_notification
-  - Username: dustinlumsden
-  - Password: Ultor2015
+   1. include javascript at the BOTTOM of any file you are wanting to add a splash page to
+    <%= javascript_include_tag "closeout_splashpage" %>
+   2. create a div on your page that is hidden like this.
+     <div id="signals-closeout" style="display:none;">
+       HIDDEN SALES PAGE
+     </div>
